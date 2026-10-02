@@ -476,6 +476,8 @@ composer.lock
 *.serverless*
 
 *.env
+*.env.local
+*.env.development.local
 
 *.private*
 *.pri*
