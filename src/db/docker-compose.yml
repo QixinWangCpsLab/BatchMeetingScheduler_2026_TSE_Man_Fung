@@ -1,0 +1,18 @@
+services:
+  mariadb:
+    build: .
+    image: capstone-mariadb:11.4.2
+    hostname: localhost.localdomain
+    ports:
+      - "3306:3306"
+    environment:
+      TZ: Asia/Hong_Kong
+      MARIADB_ROOT_PASSWORD: root_local_only
+      MARIADB_DATABASE: 25000000d
+      MARIADB_USER: User1
+      MARIADB_PASSWORD: Password123
+    volumes:
+      - mariadb-data:/var/lib/mysql
+
+volumes:
+  mariadb-data:
