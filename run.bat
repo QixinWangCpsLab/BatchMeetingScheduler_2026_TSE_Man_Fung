@@ -36,11 +36,15 @@ echo [T] Stop containers
 echo [L] Show container logs
 echo [D] Delete containers but keep the database volume
 echo [X] Delete containers and the database volume
+echo [I] Insert test data into the running database
+echo.
+echo Test data is not inserted unless you choose I, or answer y after C, E, or S.
+echo Enter skips the question. The default is no.
 echo.
 
 :GET_ACTION
 set "ACTION="
-set /p "ACTION=Select an action [C/E/S(default)/T/L/D/X]: "
+set /p "ACTION=Select an action [C/E/S(default)/T/L/D/X/I]: "
 if not defined ACTION set "ACTION=S"
 
 if /i "%ACTION%"=="C" goto GET_ENV_VALUES
@@ -50,15 +54,17 @@ if /i "%ACTION%"=="T" goto LOAD_ENV
 if /i "%ACTION%"=="L" goto LOAD_ENV
 if /i "%ACTION%"=="D" goto LOAD_ENV
 if /i "%ACTION%"=="X" goto LOAD_ENV
+if /i "%ACTION%"=="I" goto LOAD_ENV
 
 echo.
-echo ERROR: Please enter C, E, S, T, L, D, or X.
+echo ERROR: Please enter C, E, S, T, L, D, X, or I.
 echo.
 goto GET_ACTION
 
 :GET_ENV_VALUES
 echo.
 echo Enter Docker settings. Press Enter to use the value in brackets.
+echo Database passwords are hidden while you type. Press Enter to keep the default.
 echo Passwords are written to the local .env file.
 echo.
 
@@ -66,8 +72,10 @@ call :PROMPT_VALUE PHP_CONTAINER_NAME "PHP container name" "%DEFAULT_PHP_CONTAIN
 call :PROMPT_VALUE DB_CONTAINER_NAME "Database container name" "%DEFAULT_DB_CONTAINER_NAME%"
 call :PROMPT_VALUE DB_NAME "Database name" "%DEFAULT_DB_NAME%"
 call :PROMPT_VALUE DB_USER "Database user" "%DEFAULT_DB_USER%"
-call :PROMPT_VALUE DB_PASS "Database password" "%DEFAULT_DB_PASS%"
-call :PROMPT_VALUE DB_ROOT_PASSWORD "MariaDB root password" "%DEFAULT_DB_ROOT_PASSWORD%"
+call :PROMPT_SECRET DB_PASS "Database password" "%DEFAULT_DB_PASS%"
+if errorlevel 1 goto FAILED
+call :PROMPT_SECRET DB_ROOT_PASSWORD "MariaDB root password" "%DEFAULT_DB_ROOT_PASSWORD%"
+if errorlevel 1 goto FAILED
 call :PROMPT_VALUE DB_HOST "Database host used by PHP" "%DEFAULT_DB_HOST%"
 call :PROMPT_PORT DB_PORT "Database host port" "%DEFAULT_DB_PORT%"
 call :PROMPT_PORT PHP_PORT "PHP host port" "%DEFAULT_PHP_PORT%"
@@ -75,11 +83,14 @@ call :PROMPT_VALUE TZ "Timezone" "%DEFAULT_TZ%"
 echo.
 echo Mail and site settings. Press Enter to keep the bracket value.
 echo Mail can stay blank until email is connected.
+echo The mail username and mail password are hidden while you type.
 call :PROMPT_VALUE MAIL_HOST "SMTP host" "%DEFAULT_MAIL_HOST%"
 call :PROMPT_PORT MAIL_PORT "SMTP port" "%DEFAULT_MAIL_PORT%"
 call :PROMPT_VALUE MAIL_SECURE "SMTP security (ssl or tls)" "%DEFAULT_MAIL_SECURE%"
-call :PROMPT_VALUE MAIL_USER "Mail username" "%DEFAULT_MAIL_USER%"
-call :PROMPT_VALUE MAIL_PASS "Mail password" "%DEFAULT_MAIL_PASS%"
+call :PROMPT_SECRET MAIL_USER "Mail username" "%DEFAULT_MAIL_USER%"
+if errorlevel 1 goto FAILED
+call :PROMPT_SECRET MAIL_PASS "Mail password" "%DEFAULT_MAIL_PASS%"
+if errorlevel 1 goto FAILED
 call :PROMPT_VALUE MAIL_FROM "Mail from address" "%DEFAULT_MAIL_FROM%"
 call :PROMPT_VALUE MAIL_FROM_NAME "Mail from name" "%DEFAULT_MAIL_FROM_NAME%"
 set "DEFAULT_ROOT_URL=http://localhost:%PHP_PORT%"
@@ -143,6 +154,7 @@ if not defined MAIL_FROM set "MAIL_FROM=%DEFAULT_MAIL_FROM%"
 if not defined MAIL_FROM_NAME set "MAIL_FROM_NAME=%DEFAULT_MAIL_FROM_NAME%"
 if not defined ROOT_URL set "ROOT_URL=http://localhost:%PHP_PORT%"
 if not defined ROOT_PATH set "ROOT_PATH=%DEFAULT_ROOT_PATH%"
+if /i "%ACTION%"=="I" goto INSERT_TEST_DATA_ONLY
 goto SHOW_CONFIGURATION
 
 :SHOW_CONFIGURATION
@@ -162,7 +174,8 @@ echo Database host:      %DB_HOST% (Docker PHP host: %DB_DOCKER_HOST%)
 echo Database port:      localhost:%DB_PORT%
 echo Database charset:   %DB_CHARSET% / %DB_COLLATION%
 echo Timezone:           %TZ%
-echo Mail:               %MAIL_USER% via %MAIL_HOST%:%MAIL_PORT% (%MAIL_SECURE%)
+echo Mail host:          [hidden]
+echo Mail username:      [hidden]
 echo Mail password:      [hidden]
 echo Mail from:          %MAIL_FROM_NAME% %MAIL_FROM%
 echo Public URL:         %ROOT_URL%
@@ -203,7 +216,7 @@ if errorlevel 1 (
     echo ERROR: Failed to start the containers.
     goto FAILED
 )
-goto SHOW_SUCCESS
+goto WAIT_FOR_SERVICES
 
 :STOP_CONTAINERS
 echo Stopping the containers...
@@ -285,8 +298,10 @@ if errorlevel 1 (
     del "%SCHEMA_OUT%" "%SCHEMA_ERR%" 2>nul
     goto FAILED
 )
-findstr /i /x "exam" "%SCHEMA_OUT%" >nul
-if errorlevel 1 (
+rem Docker writes a Unix line ending. findstr /x does not treat that as an exact line.
+set "SCHEMA_HIT="
+set /p SCHEMA_HIT=<"%SCHEMA_OUT%"
+if /i not "%SCHEMA_HIT%"=="exam" (
     echo ERROR: The database is up, but the exam table is missing.
     echo Schema import runs only when the database volume is first created.
     echo Select X to delete the volume, then select E again.
@@ -294,6 +309,48 @@ if errorlevel 1 (
     goto FAILED
 )
 del "%SCHEMA_OUT%" "%SCHEMA_ERR%" 2>nul
+goto MAYBE_TEST_DATA
+
+:INSERT_TEST_DATA_ONLY
+call :REQUIRE_DOCKER
+if errorlevel 1 goto FAILED
+set "DB_HEALTH="
+for /f "delims=" %%H in ('docker inspect --format "{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}" "%DB_CONTAINER_NAME%" 2^>nul') do set "DB_HEALTH=%%H"
+if /i not "%DB_HEALTH%"=="healthy" (
+    echo ERROR: The database is not running. Select S to start it, then select I again.
+    goto FAILED
+)
+goto MAYBE_TEST_DATA
+
+:MAYBE_TEST_DATA
+echo.
+echo Demo exams COMP4431, COMP4432, and COMP4433 can be loaded from src\db\test_data.sql.
+echo Enter skips this. y replaces those exam codes and the demo logins.
+set "INSERT_TEST_DATA="
+set /p "INSERT_TEST_DATA=Insert test data? [y/N]: "
+if /i "%INSERT_TEST_DATA%"=="y" goto RUN_TEST_DATA
+if /i "%INSERT_TEST_DATA%"=="yes" goto RUN_TEST_DATA
+echo Skipped test data.
+goto SHOW_SUCCESS
+
+:RUN_TEST_DATA
+if not exist "src\db\test_data.sql" (
+    echo ERROR: src\db\test_data.sql is missing.
+    goto FAILED
+)
+echo Inserting test data...
+docker exec -i -e MYSQL_PWD="%DB_PASS%" "%DB_CONTAINER_NAME%" mariadb --protocol=tcp -h127.0.0.1 -u"%DB_USER%" "%DB_NAME%" < "src\db\test_data.sql"
+if errorlevel 1 (
+    echo.
+    echo ERROR: Test data was not inserted.
+    goto FAILED
+)
+echo.
+echo Test data inserted.
+echo Teacher login: prof.demo, teacher.demo, or ta.demo
+echo Student login: 22000001d, then choose COMP4431 or COMP4432
+echo Password:      Test1234
+echo old.demo and student 22000011d are disabled.
 goto SHOW_SUCCESS
 
 :SHOW_SUCCESS
@@ -352,6 +409,8 @@ call :CHECK_PORT DB_PORT "DB_PORT"
 call :CHECK_PORT PHP_PORT "PHP_PORT"
 call :CHECK_PASSWORD DB_PASS "DB_PASS"
 call :CHECK_PASSWORD DB_ROOT_PASSWORD "DB_ROOT_PASSWORD"
+if defined MAIL_USER call :CHECK_PASSWORD MAIL_USER "MAIL_USER"
+if defined MAIL_PASS call :CHECK_PASSWORD MAIL_PASS "MAIL_PASS"
 if defined MAIL_PORT call :CHECK_PORT MAIL_PORT "MAIL_PORT"
 if defined MAIL_SECURE call :CHECK_MAIL_SECURE
 if /i "%DB_USER%"=="root" (
@@ -442,17 +501,36 @@ set "ENV_ERROR=1"
 exit /b 0
 
 :CHECK_PASSWORD
-call set "PASS_VALUE=%%%~1%%"
-if not defined PASS_VALUE (
+setlocal DisableDelayedExpansion
+if not defined %~1 (
+    endlocal
     echo ERROR: %~2 is missing from .env.
     set "ENV_ERROR=1"
     exit /b 0
 )
-powershell -NoProfile -Command "if ($env:%~1.Contains([char]34) -or $env:%~1 -match '[&|!^%%<> ]') { exit 1 } else { exit 0 }" >nul
-if errorlevel 1 (
+set "BMS_CHK=%TEMP%\bms-secret-check-%RANDOM%.txt"
+set "BMS_PAT=%TEMP%\bms-secret-pat-%RANDOM%.txt"
+set %~1>"%BMS_CHK%"
+> "%BMS_PAT%" echo( 
+>>"%BMS_PAT%" echo ^&
+>>"%BMS_PAT%" echo ^|
+>>"%BMS_PAT%" echo !
+>>"%BMS_PAT%" echo ^^
+>>"%BMS_PAT%" echo %%
+>>"%BMS_PAT%" echo ^<
+>>"%BMS_PAT%" echo ^>
+>>"%BMS_PAT%" echo "
+set "BMS_BAD=0"
+findstr /l /g:"%BMS_PAT%" "%BMS_CHK%" >nul
+if not errorlevel 1 set "BMS_BAD=1"
+del /f /q "%BMS_CHK%" "%BMS_PAT%"
+if "%BMS_BAD%"=="1" (
+    endlocal
     echo ERROR: %~2 contains a space or one of these characters: ^& ^| ^^ ! %% " ^< ^>
     set "ENV_ERROR=1"
+    exit /b 0
 )
+endlocal
 exit /b 0
 
 :PROMPT_VALUE
@@ -460,6 +538,43 @@ set "%~1="
 set /p "%~1=%~2 [%~3]: "
 if not defined %~1 set "%~1=%~3"
 exit /b 0
+
+:PROMPT_SECRET
+where.exe replace.exe >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo ERROR: replace.exe was not found. A hidden value cannot be read.
+    exit /b 1
+)
+setlocal EnableDelayedExpansion
+set "Line="
+<nul set /p "=%~2 (hidden, Enter keeps the default): "
+call :PasswordInput
+if not defined Line set "Line=%~3"
+endlocal & set "%~1=%Line%"
+exit /b 0
+
+:PasswordInput
+::Author: Carlos Montiers Aguilera
+::Last updated: 20150401. Created: 20150401.
+::Set in variable Line a input password
+For /F skip^=1^ delims^=^ eol^= %%# in (
+'"Echo(|Replace.exe "%~f0" . /U /W"') Do Set "CR=%%#"
+For /F %%# In (
+'"Prompt $H &For %%_ In (_) Do Rem"') Do Set "BS=%%#"
+Set "Line="
+:_PasswordInput_Kbd
+Set "CHR=" & For /F skip^=1^ delims^=^ eol^= %%# in (
+'Replace.exe "%~f0" . /U /W') Do Set "CHR=%%#"
+If !CHR!==!CR! Echo(&Goto :Eof
+If !CHR!==!BS! (If Defined Line (Set /P "=!BS! !BS!" <Nul
+Set "Line=!Line:~0,-1!"
+)
+) Else (Set /P "=*" <Nul
+If !CHR!==! (Set "Line=!Line!^!"
+) Else Set "Line=!Line!!CHR!"
+)
+Goto :_PasswordInput_Kbd
 
 :PROMPT_PORT
 call :PROMPT_VALUE "%~1" "%~2" "%~3"

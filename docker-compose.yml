@@ -1,8 +1,8 @@
 services:
   php:
     build:
-      context: ./src/web/docker
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: src/web/docker/Dockerfile
     container_name: ${PHP_CONTAINER_NAME}
     restart: unless-stopped
     depends_on:
