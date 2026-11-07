@@ -37,14 +37,17 @@ echo [L] Show container logs
 echo [D] Delete containers but keep the database volume
 echo [X] Delete containers and the database volume
 echo [I] Insert test data into the running database
+echo [U] Update PHP files in the running container
 echo.
 echo Test data is not inserted unless you choose I, or answer y after C, E, or S.
 echo Enter skips the question. The default is no.
+echo U copies src\web into the running PHP container and reloads Apache.
+echo The container stays in place. Dockerfile changes still need E.
 echo.
 
 :GET_ACTION
 set "ACTION="
-set /p "ACTION=Select an action [C/E/S(default)/T/L/D/X/I]: "
+set /p "ACTION=Select an action [C/E/S(default)/T/L/D/X/I/U]: "
 if not defined ACTION set "ACTION=S"
 
 if /i "%ACTION%"=="C" goto GET_ENV_VALUES
@@ -55,9 +58,10 @@ if /i "%ACTION%"=="L" goto LOAD_ENV
 if /i "%ACTION%"=="D" goto LOAD_ENV
 if /i "%ACTION%"=="X" goto LOAD_ENV
 if /i "%ACTION%"=="I" goto LOAD_ENV
+if /i "%ACTION%"=="U" goto LOAD_ENV
 
 echo.
-echo ERROR: Please enter C, E, S, T, L, D, X, or I.
+echo ERROR: Please enter C, E, S, T, L, D, X, I, or U.
 echo.
 goto GET_ACTION
 
@@ -155,6 +159,7 @@ if not defined MAIL_FROM_NAME set "MAIL_FROM_NAME=%DEFAULT_MAIL_FROM_NAME%"
 if not defined ROOT_URL set "ROOT_URL=http://localhost:%PHP_PORT%"
 if not defined ROOT_PATH set "ROOT_PATH=%DEFAULT_ROOT_PATH%"
 if /i "%ACTION%"=="I" goto INSERT_TEST_DATA_ONLY
+if /i "%ACTION%"=="U" goto UPDATE_PHP
 goto SHOW_CONFIGURATION
 
 :SHOW_CONFIGURATION
@@ -310,6 +315,52 @@ if /i not "%SCHEMA_HIT%"=="exam" (
 )
 del "%SCHEMA_OUT%" "%SCHEMA_ERR%" 2>nul
 goto MAYBE_TEST_DATA
+
+:UPDATE_PHP
+call :REQUIRE_DOCKER
+if errorlevel 1 goto FAILED
+if not exist "src\web\index.php" (
+    echo ERROR: src\web\index.php is missing.
+    goto FAILED
+)
+set "PHP_STATE="
+for /f "delims=" %%H in ('docker inspect --format "{{.State.Status}}" "%PHP_CONTAINER_NAME%" 2^>nul') do set "PHP_STATE=%%H"
+if /i not "%PHP_STATE%"=="running" (
+    echo ERROR: The PHP container is not running. Select S to start it, then select U again.
+    goto FAILED
+)
+echo Copying src\web into %PHP_CONTAINER_NAME%...
+echo The running container is kept.
+docker exec "%PHP_CONTAINER_NAME%" rm -rf /tmp/bms-web-update
+if errorlevel 1 (
+    echo.
+    echo ERROR: Could not prepare the PHP container for the update.
+    goto FAILED
+)
+rem The destination must not exist. docker cp then places the contents of src\web there.
+docker cp "src\web" "%PHP_CONTAINER_NAME%:/tmp/bms-web-update"
+if errorlevel 1 (
+    echo.
+    echo ERROR: Could not copy src\web into the PHP container.
+    goto FAILED
+)
+docker exec "%PHP_CONTAINER_NAME%" sh -c "find /tmp/bms-web-update -type f \( -name .env -o -name .env.local -o -name .env.development.local \) -delete && rm -rf /var/www/html && mv /tmp/bms-web-update /var/www/html && chown -R www-data:www-data /var/www/html && test -f /var/www/html/index.php && test ! -e /var/www/html/.env"
+if errorlevel 1 (
+    echo.
+    echo ERROR: The PHP files were not published into /var/www/html.
+    goto FAILED
+)
+docker exec "%PHP_CONTAINER_NAME%" apache2ctl graceful
+if errorlevel 1 (
+    echo.
+    echo ERROR: The files were copied, but Apache did not reload.
+    goto FAILED
+)
+echo.
+echo PHP files in the running container now match src\web.
+echo Refresh the browser.
+echo Run U again after later edits. C and E build a new container from the image, so run U again after those if src\web is newer.
+goto END
 
 :INSERT_TEST_DATA_ONLY
 call :REQUIRE_DOCKER

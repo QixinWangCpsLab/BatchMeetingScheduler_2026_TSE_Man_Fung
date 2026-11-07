@@ -10,7 +10,8 @@ services:
         condition: service_healthy
     environment:
       DB_HOST: ${DB_DOCKER_HOST:-db}
-      DB_PORT: ${DB_PORT}
+      # .env DB_PORT is the Windows host port. MariaDB listens on 3306 inside the Docker network.
+      DB_PORT: "3306"
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASS: ${DB_PASS}
