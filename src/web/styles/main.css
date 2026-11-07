@@ -1,48 +1,67 @@
-html{
+html {
     min-height: 100vh;
 }
 
-body{
-    font-family: 'Chiron Sans HK WS', sans-serif;
+body {
+    font-family: "Chiron Sans HK WS", sans-serif;
     min-height: 100vh;
-
+    color: #24181a;
+    background: #e7ebf0;
+    line-height: 1.5;
 }
-#main{
-    max-width: 800px
+
+#main {
+    max-width: 800px;
 }
 
-.card{
-    border: 1px solid white;
+:root {
+    --poly-red: #b85661;
+    --poly-red-rgb: 184, 86, 97;
+    --bs-primary: #8f3d47;
+    --bs-primary-rgb: 143, 61, 71;
+    --bs-link-color: #8f3d47;
+    --bs-link-hover-color: #6f2f37;
+}
+
+.card {
+    border: 1px solid var(--bs-gray-300, #dee2e6);
     box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
 }
 
-.btn-lg{
+.btn-lg {
     padding: 2rem;
     font-size: 3rem;
     border-radius: 0.3rem;
 }
 
-.bg-poly{
-    background-color: #B85661;
+.bg-poly {
+    background-color: var(--poly-red);
 }
 
-.bg-light{
-    background-color: #f8f9fa;
-    border-color:#f8f9fa ;
-    box-shadow:none;
+.text-poly {
+    color: var(--bs-primary);
 }
 
-.text-poly{
-    color: #B85661;
+.btn-primary,
+.btn-poly {
+    color: #fff;
+    background-color: var(--bs-primary);
+    border-color: var(--bs-primary);
 }
 
-.btn-poly{
-    background-color: #B85661;
-    border-color: #B85661;
-
+.btn-primary:hover,
+.btn-primary:focus,
+.btn-poly:hover,
+.btn-poly:focus {
+    color: #fff;
+    background-color: var(--bs-link-hover-color);
+    border-color: var(--bs-link-hover-color);
 }
 
-.btn-poly:hover {
-    background-color: #9a414b;
-    border-color: #9a414b;
+a {
+    color: var(--bs-link-color);
+}
+
+a:hover {
+    color: var(--bs-link-hover-color);
 }
