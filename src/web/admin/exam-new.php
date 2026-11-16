@@ -227,7 +227,7 @@ try {
     }
     $steps = [
         1 => 'What is this exam',
-        2 => 'First round',
+        2 => 'Next round',
         3 => 'Time slots',
         4 => 'Students and groups',
         5 => 'Access and finish',
@@ -303,7 +303,7 @@ try {
         $body .= text_field('end_date', 'End date', '', ['id' => 'end_date', 'type' => 'date']);
         $body .= text_field('daily_start', 'Daily start', '09:00', ['id' => 'daily_start', 'type' => 'time']);
         $body .= text_field('daily_end', 'Daily end', '12:00', ['id' => 'daily_end', 'type' => 'time']);
-        $body .= text_field('chairs', 'Parallel chairs', '1', ['id' => 'chairs', 'type' => 'number', 'min' => '1']);
+        $body .= text_field('chairs', 'Parallel sessions', '1', ['id' => 'chairs', 'type' => 'number', 'min' => '1']);
         $body .= '</div><p id="plan-note" class="plan-note"></p>';
         $body .= '<button class="btn btn-poly" type="submit">Add time slots</button></form><br>';
         $slots = db_all('SELECT * FROM exam_timeslot WHERE exam_id = ? ORDER BY start_at ASC, timeslot_id ASC', [$examId]);
